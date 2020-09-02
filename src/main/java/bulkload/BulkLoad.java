@@ -16,6 +16,8 @@ package bulkload;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.FileInputStream;
 import java.io.InputStreamReader;
 import java.math.BigDecimal;
 import java.net.HttpURLConnection;
@@ -37,7 +39,7 @@ import org.apache.cassandra.io.sstable.CQLSSTableWriter;
  */
 public class BulkLoad
 {
-    public static final String CSV_URL = "http://real-chart.finance.yahoo.com/table.csv?s=%s";
+    //public static final String CSV_URL = "https://sdc-bucket.s3-us-west-1.amazonaws.com/yahoo.csv";
 
     /** Default output directory */
     public static final String DEFAULT_OUTPUT_DIR = "./data";
@@ -45,45 +47,39 @@ public class BulkLoad
     public static final SimpleDateFormat DATE_FORMAT = new SimpleDateFormat("yyyy-MM-dd");
 
     /** Keyspace name */
-    public static final String KEYSPACE = "quote";
+    public static final String KEYSPACE = "calendar";//TODO set keyspace name
     /** Table name */
-    public static final String TABLE = "historical_prices";
+    public static final String TABLE = "reservations_by_room";//TODO set table name
 
     /**
      * Schema for bulk loading table.
      * It is important not to forget adding keyspace name before table name,
      * otherwise CQLSSTableWriter throws exception.
      */
+    //TODO set schema
     public static final String SCHEMA = String.format("CREATE TABLE %s.%s (" +
-                                                          "ticker ascii, " +
-                                                          "date timestamp, " +
-                                                          "open decimal, " +
-                                                          "high decimal, " +
-                                                          "low decimal, " +
-                                                          "close decimal, " +
-                                                          "volume bigint, " +
-                                                          "adj_close decimal, " +
-                                                          "PRIMARY KEY (ticker, date) " +
-                                                      ") WITH CLUSTERING ORDER BY (date DESC)", KEYSPACE, TABLE);
+                                                          "id int, " +
+                                                          "check_in timestamp, " +
+                                                          "check_out timestamp, " +
+                                                          "guests int, " +
+                                                          "room_id int, " +
+                                                          "user_id int, " +
+                                                          "PRIMARY KEY (room_id, id) " +
+                                                          ") WITH CLUSTERING ORDER BY (id DESC)", KEYSPACE, TABLE);
 
     /**
      * INSERT statement to bulk load.
      * It is like prepared statement. You fill in place holder for each data.
      */
+    //TODO set insert with columns
     public static final String INSERT_STMT = String.format("INSERT INTO %s.%s (" +
-                                                               "ticker, date, open, high, low, close, volume, adj_close" +
+                                                               "id,check_in,check_out,guests,room_id,user_id" +
                                                            ") VALUES (" +
-                                                               "?, ?, ?, ?, ?, ?, ?, ?" +
+                                                               "?, ?, ?, ?, ?, ?" +
                                                            ")", KEYSPACE, TABLE);
 
     public static void main(String[] args)
     {
-        if (args.length == 0)
-        {
-            System.out.println("usage: java bulkload.BulkLoad <list of ticker symbols>");
-            return;
-        }
-
         // magic!
         Config.setClientMode(true);
 
@@ -107,29 +103,12 @@ public class BulkLoad
                .withPartitioner(new Murmur3Partitioner());
         CQLSSTableWriter writer = builder.build();
 
-        for (String ticker : args)
-        {
-            HttpURLConnection conn;
-            try
-            {
-                URL url = new URL(String.format(CSV_URL, ticker));
-                conn = (HttpURLConnection) url.openConnection();
-            }
-            catch (IOException e)
-            {
-                throw new RuntimeException(e);
-            }
-
             try (
-                BufferedReader reader = new BufferedReader(new InputStreamReader(conn.getInputStream()));
+                InputStream inputStream = new FileInputStream("/Users/blancagomez/Github/SEI/calendar/server/csv/reservations.csv"); //TODO set path to file
+                BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream));
                 CsvListReader csvReader = new CsvListReader(reader, CsvPreference.STANDARD_PREFERENCE)
             )
             {
-                if (conn.getResponseCode() != HttpURLConnection.HTTP_OK)
-                {
-                    System.out.println("Historical data not found for " + ticker);
-                    continue;
-                }
 
                 csvReader.getHeader(true);
 
@@ -139,21 +118,19 @@ public class BulkLoad
                 {
                     // We use Java types here based on
                     // http://www.datastax.com/drivers/java/2.0/com/datastax/driver/core/DataType.Name.html#asJavaClass%28%29
-                    writer.addRow(ticker,
-                                  DATE_FORMAT.parse(line.get(0)),
-                                  new BigDecimal(line.get(1)),
-                                  new BigDecimal(line.get(2)),
-                                  new BigDecimal(line.get(3)),
-                                  new BigDecimal(line.get(4)),
-                                  Long.parseLong(line.get(5)),
-                                  new BigDecimal(line.get(6)));
+                    //TODO set types for columns
+                    writer.addRow(Integer.parseInt(line.get(0)),
+                                  DATE_FORMAT.parse(line.get(1)),
+                                  DATE_FORMAT.parse(line.get(2)),
+                                  Integer.parseInt(line.get(3)),
+                                  Integer.parseInt(line.get(4)),
+                                  Integer.parseInt(line.get(5)));
                 }
             }
             catch (InvalidRequestException | ParseException | IOException e)
             {
                 e.printStackTrace();
             }
-        }
 
         try
         {
